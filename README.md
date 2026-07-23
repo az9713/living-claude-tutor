@@ -1,4 +1,4 @@
-# Live Claude Coach
+# Claude Coach Live
 
 A self-extending habit coach for Claude Code usage. Born from an audit of 458 sessions
 that found 12 "god sessions" accounted for ~49% of 13.25B lifetime cache-read tokens.
@@ -80,7 +80,7 @@ schtasks /Create /SC WEEKLY /D SUN /ST 18:00 /TN ClaudeCoachWeekly /TR "%USERPRO
    you like, append the coach's `--brief` output to it instead of replacing it:
 
 ```bash
-# Live Claude Coach (P2): threshold grade + nudges this week; silent on any failure
+# Claude Coach Live (P2): threshold grade + nudges this week; silent on any failure
 coach=$(echo "$input" | python "$HOME/.claude/coach/statusline.py" --brief 2>/dev/null)
 [ -n "$coach" ] && parts+=("$coach")
 ```
