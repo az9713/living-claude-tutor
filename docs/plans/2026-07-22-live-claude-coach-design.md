@@ -227,7 +227,7 @@ wrapped:
 
 | now | becomes |
 |---|---|
-| repo `living-claude-tutor/` | `live-claude-coach/` |
+| repo `living-claude-tutor/` | `claude-coach-live` (GitHub); working dir still `living-claude-tutor/` |
 | `tutor/` | `coach/` |
 | `tutor_hook.py` | `coach_hook.py` |
 | `tutor_weekly.py` | `coach_weekly.py` |
