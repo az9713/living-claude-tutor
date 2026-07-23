@@ -1,4 +1,4 @@
-# TUTOR-MODEL.md — living model of the user's Claude Code usage
+# COACH-MODEL.md — living model of the user's Claude Code usage
 
 Maintained by the weekly tutor loop. All mutations proposed via report card, human-approved.
 Seeded from the 2026-07-21 audit (458 main sessions, 886 subagent/workflow transcripts, ~1 GB).
@@ -33,3 +33,8 @@ Seeded from the 2026-07-21 audit (458 main sessions, 886 subagent/workflow trans
 - 2026-07-21: W30 proposals resolved via chat. Approved: orphan-taskcreate rule (fast loop), deferral_total metric (Sensor A). Rejected: budget-disclosed-late rule, re-read-density metric. Deferred: 8-skill prune shortlist until 4 weeks of usage data (open hypothesis: cerebras-brain trio is used in other weeks).
 - 2026-07-21: security-review finding (indirect prompt injection via Sensor C traces) hardened: UNTRUSTED preamble added to both LLM prompts; approval gate remains the primary control.
 - 2026-07-22: P2 (statusline ambient cue) and P8 (quarterly blind-spot pass) implemented; SPEC-V2.md written (18-waste sensor expansion + Sensor F quality guard) — spec only, not yet implemented.
+- 2026-07-22: weekly run (102 sessions, 0 proposals pending, errors: none)
+- 2026-07-22: weekly run (102 sessions, 0 proposals pending, errors: none)
+- 2026-07-22: weekly run (102 sessions, 0 proposals pending, errors: none)
+- 2026-07-22: weekly run (102 sessions, 0 proposals pending, errors: none)
+- 2026-07-22: weekly run (102 sessions, 0 proposals pending, errors: none)

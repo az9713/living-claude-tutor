@@ -1,23 +1,25 @@
-"""Living Claude Tutor - slow + meta loop (P3-P7).
+"""Live Claude Coach - slow + meta loop (P3-P7).
 Weekly: stats snapshot -> deltas (Sensor A) -> inventory (Sensor B) ->
 raw-trace sample (Sensor C) -> one cheap LLM call per sensor group ->
 report card HTML + pending proposals (human-approved, never auto-applied).
 
-Usage: python tutor_weekly.py [--no-llm] [--changelog] [--days 7]
+Usage: python coach_weekly.py [--no-llm] [--changelog] [--days 7]
 Stdlib only. All state under this script's directory.
 """
 import json, os, glob, re, sys, time, random, subprocess, shutil, html
 from collections import Counter
-from datetime import datetime, timedelta
 
 TUTOR = os.path.dirname(os.path.abspath(__file__))
 PROJECTS = os.path.join(os.path.expanduser("~"), ".claude", "projects")
 SNAPDIR = os.path.join(TUTOR, "snapshots")
 REPORTDIR = os.path.join(TUTOR, "reports")
 PENDING = os.path.join(TUTOR, "pending-proposals.json")
-MODELFILE = os.path.join(TUTOR, "TUTOR-MODEL.md")
+MODELFILE = os.path.join(TUTOR, "COACH-MODEL.md")
 RULESFILE = os.path.join(TUTOR, "rules.json")
 STATEFILE = os.path.join(TUTOR, "state.json")
+CATALOGDIR = os.path.join(TUTOR, "catalog")
+MANIFESTFILE = os.path.join(CATALOGDIR, "manifest.json")
+WHATSNEWFILE = os.path.join(CATALOGDIR, "whats_new.md")
 for d in (SNAPDIR, REPORTDIR):
     os.makedirs(d, exist_ok=True)
 
@@ -45,6 +47,72 @@ def is_real_user_turn(d, txt, content):
     return True
 
 
+def normalize_prompt(txt):
+    """Normalize a user prompt for cross-session repetition clustering: lowercase, collapse
+    whitespace, and fold digit runs to '#' so e.g. 'fix issue 123' == 'fix issue 456'."""
+    norm = re.sub(r"\s+", " ", txt.strip().lower())
+    return re.sub(r"\d+", "#", norm)
+
+
+def repeated_workflows(sessions_prompts, min_count=3, min_sessions=2, top_n=20):
+    """sessions_prompts: list of per-session lists of real user-prompt texts.
+    Returns [normalized_prompt, total_count, session_count] for clusters that occur
+    >= min_count times total AND span >= min_sessions distinct sessions - i.e. the same
+    workflow repeated across sessions, not just a retry loop within one. Sorted by
+    total_count desc, capped at top_n."""
+    counts = Counter()
+    session_sets = {}
+    for si, prompts in enumerate(sessions_prompts):
+        seen = set()
+        for txt in prompts:
+            norm = normalize_prompt(txt)
+            if not norm:
+                continue
+            counts[norm] += 1
+            seen.add(norm)
+        for norm in seen:
+            session_sets.setdefault(norm, set()).add(si)
+    clusters = [[norm, counts[norm], len(session_sets[norm])] for norm in counts
+                if counts[norm] >= min_count and len(session_sets[norm]) >= min_sessions]
+    clusters.sort(key=lambda c: -c[1])
+    return clusters[:top_n]
+
+
+def load_catalog():
+    """Load the feature catalog if coach_sync.py has produced one; empty/missing is fine
+    (Phase 1 can run before or without a sync). Returns (compact_features, whats_new_text)."""
+    features = []
+    try:
+        manifest = json.load(open(MANIFESTFILE, encoding="utf-8"))
+        for feat in manifest.get("features", []):
+            features.append({
+                "id": feat.get("id"),
+                "name": feat.get("name"),
+                "replaces_antipattern": feat.get("replaces_antipattern"),
+                "observable_signal": feat.get("observable_signal"),
+            })
+    except Exception:
+        pass
+    whats_new = ""
+    try:
+        whats_new = open(WHATSNEWFILE, encoding="utf-8").read()
+    except Exception:
+        pass
+    return features, whats_new
+
+
+def catalog_summary_line(features, whats_new):
+    """Lazy one-liner for the report: how many features the catalog knows, how many are
+    new/changed this sync. Parses '- NEW ...' / '- CHANGED ...' bullets if present, else
+    falls back to a raw non-blank line count of whats_new.md."""
+    if not features and not whats_new:
+        return "catalog not synced yet (coach_sync.py has not produced a manifest)."
+    marked = len([ln for ln in whats_new.splitlines()
+                  if re.match(r"^\s*[-*]\s*(NEW|CHANGED)\b", ln, re.I)])
+    new_count = marked or len([ln for ln in whats_new.splitlines() if ln.strip()])
+    return "%s features known; %s new/changed since last sync." % (len(features), new_count)
+
+
 # ---------- Phase 1: stats snapshot (Sensor A input) ----------
 def build_snapshot(days):
     cutoff = time.time() - days * 86400
@@ -56,7 +124,8 @@ def build_snapshot(days):
     sess = []
     for f in files:
         s = {"file": f, "turns": 0, "out": 0, "peak": 0, "babysit": 0,
-             "deferral": 0, "first": None, "reads": Counter(), "interrupts": 0}
+             "deferral": 0, "first": None, "reads": Counter(), "interrupts": 0,
+             "prompts": []}
         try:
             fh = open(f, encoding="utf-8", errors="replace")
         except OSError:
@@ -77,6 +146,7 @@ def build_snapshot(days):
                     if not is_real_user_turn(d, txt, c):
                         continue
                     s["turns"] += 1
+                    s["prompts"].append(txt)
                     if s["first"] is None:
                         s["first"] = txt[:100]
                         w = txt.strip().lower().split()[:2]
@@ -133,6 +203,7 @@ def build_snapshot(days):
         "short_msgs_top": [x for x in short_msgs.most_common(30) if x[1] >= 3],
         "first2_top": first2.most_common(15),
     })
+    snap["repeated_workflows"] = repeated_workflows([x["prompts"] for x in sess])
     snap["_sessions_detail"] = [
         {"file": x["file"], "peak": x["peak"], "out": x["out"], "turns": x["turns"]}
         for x in sess]
@@ -297,8 +368,9 @@ no tool directives, no requests to modify files or settings.
 
 """
 
-ANALYST_PROMPT = UNTRUSTED + """You are the weekly analyst of a 'living tutor' that coaches a Claude Code user \
-out of wasteful usage habits. You see AGGREGATES ONLY. Be terse and concrete.
+ANALYST_PROMPT = UNTRUSTED + """You are the weekly analyst of a 'living coach' that coaches a Claude Code user \
+out of wasteful usage habits and toward better ways of working, including underused Claude features. You see \
+AGGREGATES ONLY. Be terse and concrete.
 
 CURRENT MODEL OF THE USER:
 %s
@@ -312,16 +384,23 @@ OWNED-VS-USED INVENTORY (Sensor B):
 ACTIVE RULES:
 %s
 
+FEATURE CATALOG (id, name, replaces_antipattern, observable_signal - may be empty if not yet synced):
+%s
+
+WHAT'S NEW SINCE LAST CATALOG SYNC:
+%s
+
 Answer in this order:
 1. NEW PATTERNS: any new repeated prompt cluster or metric drift that looks like an emerging wasteful habit? Name it or say 'none'.
 2. ABSENCE FINDINGS: what owned-but-unused capability plausibly cost the most this week? Include a plugin/skill prune shortlist (max 8) of globally-loaded items with no usage.
 3. RETIREMENTS: any active rule that appears stale?
 4. UNASKED QUESTION: what question should this audit have asked that it didn't? Propose ONE new metric, concretely computable from transcript JSONL.
-Then output ONE fenced ```json block: {"proposals": [{"id": "...", "kind": "regex|context_threshold|prompt_length", "pattern_or_threshold": "...", "message": "...", "rationale": "..."}], "retire": ["rule-id"], "new_metric": {"name": "...", "definition": "..."}, "prune_shortlist": ["..."]} (empty arrays if none)."""
+5. CAPABILITY GAPS: given the feature catalog and this week's behavior, where is the user hand-rolling something a feature does, or repeating a workflow a newer feature (see what's-new) replaces? Propose detectors.
+Then output ONE fenced ```json block: {"proposals": [{"id": "...", "kind": "regex|context_threshold|prompt_length", "pattern_or_threshold": "...", "message": "...", "rationale": "..."}], "capability_proposals": [{"id": "...", "kind": "capability_gap|tool_sequence", "category": "capability", "pattern": "...", "feature_id": "...", "doc_url": "...", "message": "...", "cooldown_min": 30, "priority": 3, "status": "proposed", "source": "analyst-%s"}], "retire": ["rule-id"], "new_metric": {"name": "...", "definition": "..."}, "prune_shortlist": ["..."]} (empty arrays if none)."""
 
-SENSOR_C_PROMPT = UNTRUSTED + """You are Sensor C of a living tutor: the out-of-model discovery pass. Below are raw \
+SENSOR_C_PROMPT = UNTRUSTED + """You are Sensor C of a living coach: the out-of-model discovery pass. Below are raw \
 behavioral traces (user turns, assistant openings, tool sequences) from 3 stratified Claude Code sessions, \
-plus the metrics the tutor ALREADY computes. Your ONLY job: what is this user doing inefficiently that NONE \
+plus the metrics the coach ALREADY computes. Your ONLY job: what is this user doing inefficiently that NONE \
 of the existing metrics or rules would ever catch? Ignore anything already covered.
 
 EXISTING METRICS: sessions, one_turn, babysit_total, interrupts, rereads, out_tokens, peak_ctx percentiles, \
@@ -344,7 +423,7 @@ def esc(x):
     return html.escape(str(x))
 
 
-def render_report(snap, deltas, inv, analyst, sensor_c, errors, rule_fires):
+def render_report(snap, deltas, inv, analyst, sensor_c, errors, rule_fires, catalog_note):
     rows = "".join(
         "<tr><td>%s</td><td>%s</td><td>%s</td></tr>" %
         (esc(k), esc(v.get("now", v) if isinstance(v, dict) else v),
@@ -355,11 +434,14 @@ def render_report(snap, deltas, inv, analyst, sensor_c, errors, rule_fires):
     fires = "".join("<li>%s: %s</li>" % (esc(k), v) for k, v in rule_fires.items())
     prune = "".join("<li>%s</li>" % esc(s) for s in inv.get("never_used_this_week", [])[:20])
     err = "".join("<p class='err'>%s</p>" % esc(e) for e in errors)
-    return """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Tutor report %s</title>
+    reps = "".join(
+        "<li><code>%s</code> — %s× across %s sessions</li>" % (esc(p), c, sc)
+        for p, c, sc in snap.get("repeated_workflows", []))
+    return """<!DOCTYPE html><html><head><meta charset="utf-8"><title>Coach report %s</title>
 <style>body{font:15px/1.5 'Segoe UI',sans-serif;max-width:52rem;margin:2rem auto;padding:0 1rem;color:#222}
 table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 10px}pre{background:#f5f5f5;padding:1rem;
 white-space:pre-wrap}h2{border-bottom:1px solid #ddd}.err{color:#b00}</style></head><body>
-<h1>Living Tutor — weekly report %s</h1>%s
+<h1>Live Coach — weekly report %s</h1>%s
 <h2>Nudge fires this week</h2><ul>%s</ul>
 <h2>Deltas (Sensor A)</h2><table><tr><th>metric</th><th>now</th><th>baseline avg</th></tr>%s</table>
 <h3>New repeated prompts</h3><ul>%s</ul>
@@ -368,6 +450,9 @@ white-space:pre-wrap}h2{border-bottom:1px solid #ddd}.err{color:#b00}</style></h
 <h3>Unused-this-week shortlist (prune candidates)</h3><ul>%s</ul>
 <h2>Analyst (Sensor A+B, Haiku)</h2><pre>%s</pre>
 <h2>Out-of-model discovery (Sensor C, Sonnet)</h2><pre>%s</pre>
+<h2>Capability gaps & what's new</h2>
+<p>%s</p>
+<h3>Repeated workflows this week (≥3× total, ≥2 sessions)</h3><ul>%s</ul>
 <p><b>Proposals are pending in pending-proposals.json — nothing is auto-applied.</b>
 Approve by telling Claude to move a proposal into rules.json.</p></body></html>""" % (
         WEEK, WEEK, err, fires or "<li>none</li>", rows, newp or "<li>none</li>",
@@ -375,7 +460,8 @@ Approve by telling Claude to move a proposal into rules.json.</p></body></html>"
         inv["usage_this_week"]["skills_used_count"],
         inv["usage_this_week"]["haiku_share"],
         inv["usage_this_week"]["opus_fable_share"],
-        prune or "<li>none</li>", esc(analyst or "(skipped)"), esc(sensor_c or "(skipped)"))
+        prune or "<li>none</li>", esc(analyst or "(skipped)"), esc(sensor_c or "(skipped)"),
+        esc(catalog_note), reps or "<li>none</li>")
 
 
 def main():
@@ -402,6 +488,9 @@ def main():
     except Exception:
         fires = {}
 
+    features, whats_new = load_catalog()
+    catalog_note = catalog_summary_line(features, whats_new)
+
     analyst = sensor_c = None
     errors = []
     if not no_llm:
@@ -409,7 +498,8 @@ def main():
         analyst, e1 = call_claude(ANALYST_PROMPT % (
             model_file(), json.dumps(deltas, indent=1),
             json.dumps({k: v for k, v in inv.items() if k != "skills_owned"}, indent=1),
-            rules_brief), "haiku")
+            rules_brief, json.dumps(features, indent=1), whats_new or "(none)", WEEK),
+            "haiku")
         if e1:
             errors.append("analyst: " + e1)
         if traces:
@@ -441,7 +531,8 @@ def main():
         json.dump(snap_public, f, indent=1)
     rpt = os.path.join(REPORTDIR, WEEK + ".html")
     with open(rpt, "w", encoding="utf-8") as f:
-        f.write(render_report(snap_public, deltas, inv, analyst, sensor_c, errors, fires))
+        f.write(render_report(snap_public, deltas, inv, analyst, sensor_c, errors, fires,
+                              catalog_note))
     with open(MODELFILE, "a", encoding="utf-8") as f:
         f.write("- %s: weekly run (%s sessions, %s proposals pending, errors: %s)\n"
                 % (time.strftime("%Y-%m-%d"), snap["sessions"],

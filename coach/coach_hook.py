@@ -1,4 +1,4 @@
-"""Living Claude Tutor - fast loop (P1).
+"""Live Claude Coach - fast loop (P1).
 UserPromptSubmit hook: zero tokens idle, one-line nudge when a rule fires.
 Rules are data (rules.json); this file should rarely change.
 Fail-safe: any error exits 0 silently - never break prompting.
@@ -63,6 +63,45 @@ def orphaned_taskcreate(transcript_path):
         return False
 
 
+def recent_tool_sequence(transcript_path, limit=40):
+    """Space-joined string of the last `limit` tool_use tokens in the transcript
+    tail. Bash renders as Bash:<first_word_of_command>; every other tool renders
+    as its plain name. Used by the tool_sequence rule kind."""
+    tokens = []
+    try:
+        size = os.path.getsize(transcript_path)
+        with open(transcript_path, "rb") as f:
+            f.seek(max(0, size - 1048576))
+            tail = f.read().decode("utf-8", errors="replace")
+        for line in tail.splitlines():
+            if '"tool_use"' not in line or '"assistant"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            if d.get("type") != "assistant":
+                continue
+            content = (d.get("message") or {}).get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_use":
+                    continue
+                name = block.get("name") or ""
+                if not name:
+                    continue
+                if name == "Bash":
+                    cmd = ((block.get("input") or {}).get("command") or "").strip()
+                    first = cmd.split()[0] if cmd.split() else ""
+                    tokens.append("Bash:%s" % first)
+                else:
+                    tokens.append(name)
+    except Exception:
+        pass
+    return " ".join(tokens[-limit:])
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     data = json.load(sys.stdin)
@@ -75,6 +114,7 @@ def main():
     now = time.time()
     week = time.strftime("%G-W%V")
     ctx = None  # computed lazily, once
+    tool_seq = None  # computed lazily, once (only if a tool_sequence rule is active)
     nudges = []
 
     for r in rules:
@@ -89,7 +129,7 @@ def main():
 
         kind = r.get("kind")
         hit = False
-        if kind == "regex":
+        if kind in ("regex", "capability_gap"):
             hit = re.search(r["pattern"], prompt.strip(), re.IGNORECASE) is not None
         elif kind == "prompt_length":
             hit = len(prompt) > r["threshold"]
@@ -100,6 +140,10 @@ def main():
         elif kind == "orphan_taskcreate":
             hit = orphaned_taskcreate(transcript)
             # escalation rules suppress their milder sibling via 'suppresses'
+        elif kind == "tool_sequence":
+            if tool_seq is None:
+                tool_seq = recent_tool_sequence(transcript)
+            hit = re.search(r["pattern"], tool_seq) is not None
         if not hit:
             continue
 
@@ -109,6 +153,9 @@ def main():
         msg = r["message"].replace("{count}", str(wk[rid]))
         if ctx is not None:
             msg = msg.replace("{ctx_k}", str(round(ctx / 1000)))
+        doc_url = r.get("doc_url")
+        if kind in ("capability_gap", "tool_sequence") and doc_url:
+            msg = "%s (docs: %s)" % (msg, doc_url)
         nudges.append((r.get("priority", 5), rid, msg))
 
     if nudges:
@@ -121,8 +168,8 @@ def main():
                     fired_ids.discard(sup)
         chosen = [n for n in nudges if n[1] in fired_ids][:1]
         if chosen:
-            print("<tutor-nudge>%s Surface this note verbatim to the user at the "
-                  "top of your reply, then answer their prompt.</tutor-nudge>"
+            print("<coach-nudge>%s Surface this note verbatim to the user at the "
+                  "top of your reply, then answer their prompt.</coach-nudge>"
                   % chosen[0][2])
 
     state["fires"] = state["fires"][-2000:]

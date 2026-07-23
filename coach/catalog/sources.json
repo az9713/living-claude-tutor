@@ -1,0 +1,6 @@
+{
+ "sources": [
+  {"name": "claude-code-docs", "url": "https://docs.claude.com/en/docs/claude-code/overview"},
+  {"name": "claude-code-changelog", "url": "https://docs.claude.com/en/release-notes/claude-code"}
+ ]
+}

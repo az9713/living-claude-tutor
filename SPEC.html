@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Living Claude Tutor — Specification</title>
+<title>Live Claude Coach — Specification</title>
 <style>
   :root {
     --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #e2e2e2;
@@ -62,8 +62,8 @@
 </head>
 <body>
 
-<h1>Living Claude Tutor — Specification</h1>
-<p class="subtitle">A self-extending habit coach for Claude Code usage · v0.1 · 2026-07-21 · <strong>status: stages 1–3 implemented 2026-07-21</strong> (P2 &amp; P8 implemented 2026-07-22; live system in <code>~/.claude/tutor/</code>, git-tracked)</p>
+<h1>Live Claude Coach — Specification</h1>
+<p class="subtitle">A self-extending habit coach for Claude Code usage · v0.1 · 2026-07-21 · <strong>status: stages 1–3 implemented 2026-07-21</strong> (P2 &amp; P8 implemented 2026-07-22; live system in <code>~/.claude/coach/</code>, git-tracked)</p>
 
 <h2>1. Background &amp; goal</h2>
 <p>An audit of 458 main sessions (plus 886 subagent/workflow transcripts, ~1&nbsp;GB) found that a handful of usage habits dominate cost: 12 sessions account for ~49% of 13.25&nbsp;billion lifetime cache-read tokens. The measured habits:</p>
@@ -87,13 +87,13 @@
   <tr><td><strong>Fast loop</strong></td><td>Every prompt</td><td>Deterministic hook + rule file</td><td>0 idle; ~40/nudge</td><td>Enforce known habits in real time</td></tr>
   <tr><td><strong>Ambient loop</strong></td><td>Continuous</td><td>Statusline script</td><td>0</td><td>Passive cue before the nudge is needed</td></tr>
   <tr><td><strong>Slow loop</strong></td><td>Weekly</td><td>Stats script + 3 sensors + one cheap LLM call</td><td>~30–60k on Haiku/Sonnet</td><td>Discover new habits, propose rules, report trends</td></tr>
-  <tr><td><strong>Meta loop</strong></td><td>Weekly + quarterly</td><td><code>TUTOR-MODEL.md</code> + blind-spot pass</td><td>Included above; quarterly ~50k</td><td>Extend the tutor's own senses; retire stale rules</td></tr>
+  <tr><td><strong>Meta loop</strong></td><td>Weekly + quarterly</td><td><code>COACH-MODEL.md</code> + blind-spot pass</td><td>Included above; quarterly ~50k</td><td>Extend the tutor's own senses; retire stale rules</td></tr>
 </table>
 </div>
 <pre>
  discoveries compile DOWN          observations flow UP
 ┌─────────────────────────────────────────────────────────┐
-│  META LOOP    TUTOR-MODEL.md · "what didn't we ask?"    │
+│  META LOOP    COACH-MODEL.md · "what didn't we ask?"    │
 │      │  new sensors / new rules / retirements     ▲     │
 │      ▼                                            │     │
 │  SLOW LOOP    Sensor A (presence) · B (absence) · C     │
@@ -103,7 +103,7 @@
 │  AMBIENT      statusline meter — 0 tokens   ──────┘     │
 └─────────────────────────────────────────────────────────┘
 </pre>
-<p>All tutor state lives in one directory: <code>~/.claude/tutor/</code> — <code>rules.json</code>, <code>state.json</code>, <code>snapshots/</code> (weekly stats), <code>TUTOR-MODEL.md</code>, <code>reports/</code>. Everything is plain text, human-editable, and portable (consistent with the user's MMS portable-memory philosophy).</p>
+<p>All tutor state lives in one directory: <code>~/.claude/coach/</code> — <code>rules.json</code>, <code>state.json</code>, <code>snapshots/</code> (weekly stats), <code>COACH-MODEL.md</code>, <code>reports/</code>. Everything is plain text, human-editable, and portable (consistent with the user's MMS portable-memory philosophy).</p>
 
 <h2>3. The pieces</h2>
 
@@ -172,7 +172,7 @@
 <ul>
   <li>Inventory script enumerates capabilities: <code>~/.claude/skills/</code>, plugin lists, hooks, model tiers, native features (compact, worktrees, background tasks, subagents) → cross-references invocation counts already extracted by <code>tutor-stats.py</code>.</li>
   <li>Emits an "owned vs used" table with a staleness score; the weekly LLM call gets it alongside Sensor A's deltas and answers: <em>"what did not-using X cost this week?"</em></li>
-  <li>Monthly: WebFetch the Claude Code changelog/release notes; LLM checks new features against the current habit model ("does anything here obsolete a pattern in TUTOR-MODEL.md?").</li>
+  <li>Monthly: WebFetch the Claude Code changelog/release notes; LLM checks new features against the current habit model ("does anything here obsolete a pattern in COACH-MODEL.md?").</li>
   <li>Side benefit: the same table drives plugin/skill pruning suggestions (the ~53k startup toll from the audit).</li>
 </ul>
 <p class="label">Cost &amp; benefits</p>
@@ -195,12 +195,12 @@
 </div>
 
 <div class="piece">
-<h3>P7 — Meta loop: TUTOR-MODEL.md + self-extension<span class="tag build">build 3rd</span></h3>
+<h3>P7 — Meta loop: COACH-MODEL.md + self-extension<span class="tag build">build 3rd</span></h3>
 <p class="label">Motivation</p>
 <p>A living system needs memory of itself and pressure to grow. Without rule retirement, the tutor fossilizes into a museum of 2026 habits and nags about behaviors long fixed; without the "unasked question" step, its senses never expand. The model file tracks who you are <em>now</em>, not who you were in July.</p>
 <p class="label">Implementation</p>
 <ul>
-  <li><code>TUTOR-MODEL.md</code> — one human-readable file: known habits (status: active / improving / retired), current sensor manifest, open hypotheses, decision log.</li>
+  <li><code>COACH-MODEL.md</code> — one human-readable file: known habits (status: active / improving / retired), current sensor manifest, open hypotheses, decision log.</li>
   <li>Every weekly run's LLM call ends with two mandatory outputs: (1) <em>"what question should this audit have asked that it didn't?"</em> → proposed sensor; (2) rules with zero fires in 30 days → proposed retirement.</li>
   <li>All mutations flow through the P3 approval gate. The file is git-tracked in the tutor directory so the tutor's evolution is itself auditable.</li>
 </ul>
@@ -211,7 +211,7 @@
 <div class="piece">
 <h3>P8 — Quarterly blind-spot pass<span class="tag build">built 2026-07-22</span></h3>
 <p class="label">Motivation</p>
-<p>The weekly loop normalizes its own blind spots — whatever it consistently overlooks becomes invisible to it. A quarterly third-party audit of the tutor itself, using the already-installed <code>blind-spot-pass</code> skill with <code>TUTOR-MODEL.md</code> as input ("my Claude Code usage — what does this model of me not see?"), resets the frame. Set aside: valuable, but only after the weekly loop has a quarter of history to critique.</p>
+<p>The weekly loop normalizes its own blind spots — whatever it consistently overlooks becomes invisible to it. A quarterly third-party audit of the tutor itself, using the already-installed <code>blind-spot-pass</code> skill with <code>COACH-MODEL.md</code> as input ("my Claude Code usage — what does this model of me not see?"), resets the frame. Set aside: valuable, but only after the weekly loop has a quarter of history to critique.</p>
 <p class="label">Implementation</p>
 <ul>
   <li>Calendar reminder or quarterly cron prompting a manual run: <code>/blind-spot-pass</code> + the model file + latest 4 report cards.</li>
@@ -258,8 +258,8 @@
 <table>
   <tr><th>Stage</th><th>Pieces</th><th>Delivers</th><th>Status</th></tr>
   <tr><td>1</td><td>P1 (+ P9 quick fixes)</td><td>Real-time catch of the two ~50%-of-spend habits</td><td><strong>implemented 2026-07-21</strong> — hook tested (regex, cooldown, 527k-ctx escalation); security-guidance gated (ENABLE_STOP_REVIEW=0, Sonnet); allowlist added; standing rules in 3 project CLAUDE.md files</td></tr>
-  <tr><td>2</td><td>P3 + P4 + P5</td><td>Trend reward loop + new-habit discovery + absence detection</td><td><strong>implemented 2026-07-21</strong> — tutor_weekly.py; schtasks "ClaudeTutorWeekly" Sun 18:00; first snapshot 2026-W30</td></tr>
-  <tr><td>3</td><td>P6 + P7</td><td>Unknown-unknown discovery + self-extension ("living")</td><td><strong>implemented 2026-07-21</strong> — Sensor C sampler + meta step in weekly engine; TUTOR-MODEL.md seeded; proposals gate via pending-proposals.json</td></tr>
+  <tr><td>2</td><td>P3 + P4 + P5</td><td>Trend reward loop + new-habit discovery + absence detection</td><td><strong>implemented 2026-07-21</strong> — coach_weekly.py; schtasks "ClaudeCoachWeekly" Sun 18:00; first snapshot 2026-W30</td></tr>
+  <tr><td>3</td><td>P6 + P7</td><td>Unknown-unknown discovery + self-extension ("living")</td><td><strong>implemented 2026-07-21</strong> — Sensor C sampler + meta step in weekly engine; COACH-MODEL.md seeded; proposals gate via pending-proposals.json</td></tr>
   <tr><td>later</td><td>P2, P8</td><td>Ambient cue; quarterly external audit of the tutor</td><td>implemented 2026-07-22</td></tr>
 </table>
 </div>

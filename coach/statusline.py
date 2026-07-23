@@ -8,7 +8,7 @@ import json, os, sys, time
 
 TUTOR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TUTOR)
-from tutor_hook import context_estimate, load  # noqa: E402
+from coach_hook import context_estimate, load  # noqa: E402
 
 
 def grade(ctx):

@@ -13,7 +13,7 @@ import glob, json, os, sys, time
 
 TUTOR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TUTOR)
-from tutor_weekly import (call_claude, parse_proposals, model_file, UNTRUSTED,  # noqa: E402
+from coach_weekly import (call_claude, parse_proposals, model_file, UNTRUSTED,  # noqa: E402
                           SNAPDIR, REPORTDIR, PENDING, MODELFILE, RULESFILE)
 
 QUARTER = "%s-Q%d" % (time.strftime("%Y"), (time.localtime().tm_mon - 1) // 3 + 1)

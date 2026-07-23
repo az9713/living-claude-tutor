@@ -42,7 +42,7 @@ finally:
     os.unlink(fake_transcript)
 
 # --- P8: --no-llm builds the input package and spends zero tokens ---
-code, out = run("tutor_blindspot.py", args=("--no-llm",))
+code, out = run("coach_blindspot.py", args=("--no-llm",))
 assert code == 0, out
 assert "input package:" in out and "skipping audit call" in out, out
 pkg = out.split("input package:", 1)[1].splitlines()[0].strip()

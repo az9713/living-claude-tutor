@@ -1,4 +1,4 @@
-# Living Claude Tutor
+# Live Claude Coach
 
 A self-extending habit coach for Claude Code usage. Born from an audit of 458 sessions
 that found 12 "god sessions" accounted for ~49% of 13.25B lifetime cache-read tokens.
@@ -16,17 +16,17 @@ deterministic sensors (hooks, scripts) that run always.
 
 - `SPEC.html` — full specification: 9 pieces, motivation, implementation, cost model.
 - `audit/` — one-off transcript audit scripts (stream ~/.claude/projects JSONL, emit aggregates only).
-- `tutor/` — the tutor source (snapshot; the live install is a git repo at `~/.claude/tutor/`):
-  - `tutor_hook.py` + `rules.json` — UserPromptSubmit hook. Zero tokens idle; one-line nudge
+- `coach/` — the coach source (snapshot; the live install is a git repo at `~/.claude/coach/`):
+  - `coach_hook.py` + `rules.json` — UserPromptSubmit hook. Zero tokens idle; one-line nudge
     when a rule fires (babysitting prompts, >150k/300k context, fat pastes, orphaned task lists).
-  - `tutor_weekly.py` — weekly engine: stats snapshot → deltas (Sensor A) → owned-vs-used
+  - `coach_weekly.py` — weekly engine: stats snapshot → deltas (Sensor A) → owned-vs-used
     inventory (Sensor B) → stratified raw-trace discovery (Sensor C, the "unknown unknowns"
     pass) → Haiku/Sonnet analysis → HTML report card → pending proposals (human-approved,
-    never auto-applied) → TUTOR-MODEL.md decision log.
-  - `TUTOR-MODEL.md` — the living model: known habits, sensors, hypotheses, decisions.
+    never auto-applied) → COACH-MODEL.md decision log.
+  - `COACH-MODEL.md` — the living model: known habits, sensors, hypotheses, decisions.
   - `statusline.py` — P2 ambient cue: statusLine command rendering `ctx ~142k 🟡 · nudges wk: 3`.
     Zero tokens; reuses the hook's context estimate; thresholds come from rules.json.
-  - `tutor_blindspot.py` — P8 quarterly blind-spot pass: audits the TUTOR itself
+  - `coach_blindspot.py` — P8 quarterly blind-spot pass: audits the TUTOR itself
     ("what does this model of the user not see?") via one Sonnet call over aggregates;
     findings land in pending-proposals.json like everything else. `--no-llm` just builds
     the input package for a manual interactive run.
@@ -35,7 +35,7 @@ deterministic sensors (hooks, scripts) that run always.
 
 ## Install (Windows)
 
-1. Copy `tutor/` to `%USERPROFILE%\.claude\tutor\`.
+1. Copy `coach/` to `%USERPROFILE%\.claude\coach\`.
 2. Wire the fast-loop hook into `~/.claude/settings.json` (merge into any existing `hooks` block):
 
 ```json
@@ -46,7 +46,7 @@ deterministic sensors (hooks, scripts) that run always.
         "hooks": [
           {
             "type": "command",
-            "command": "python \"%USERPROFILE%\\.claude\\tutor\\tutor_hook.py\"",
+            "command": "python \"%USERPROFILE%\\.claude\\coach\\coach_hook.py\"",
             "timeout": 10
           }
         ]
@@ -59,30 +59,30 @@ deterministic sensors (hooks, scripts) that run always.
 3. Register the weekly discovery run:
 
 ```
-schtasks /Create /SC WEEKLY /D SUN /ST 18:00 /TN ClaudeTutorWeekly /TR "%USERPROFILE%\.claude\tutor\run_weekly.cmd"
+schtasks /Create /SC WEEKLY /D SUN /ST 18:00 /TN ClaudeCoachWeekly /TR "%USERPROFILE%\.claude\coach\run_weekly.cmd"
 ```
 
 4. (P2) Wire the ambient statusline. Two options:
 
-   **a. Standalone** — point `~/.claude/settings.json` at the tutor script (replaces any
+   **a. Standalone** — point `~/.claude/settings.json` at the coach script (replaces any
    existing `statusLine` block):
 
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "python \"%USERPROFILE%\\.claude\\tutor\\statusline.py\""
+    "command": "python \"%USERPROFILE%\\.claude\\coach\\statusline.py\""
   }
 }
 ```
 
    **b. Embed (used on the reference install)** — if you already have a statusline script
-   you like, append the tutor's `--brief` output to it instead of replacing it:
+   you like, append the coach's `--brief` output to it instead of replacing it:
 
 ```bash
-# Living Claude Tutor (P2): threshold grade + nudges this week; silent on any failure
-tutor=$(echo "$input" | python "$HOME/.claude/tutor/statusline.py" --brief 2>/dev/null)
-[ -n "$tutor" ] && parts+=("$tutor")
+# Live Claude Coach (P2): threshold grade + nudges this week; silent on any failure
+coach=$(echo "$input" | python "$HOME/.claude/coach/statusline.py" --brief 2>/dev/null)
+[ -n "$coach" ] && parts+=("$coach")
 ```
 
 ### Reading the statusline (P2)
@@ -120,13 +120,13 @@ Standalone mode renders the full form instead: `ctx ~201k ! · Opus 4.8 · $2.31
 5. (P8) Register the quarterly blind-spot pass (1st of Jan/Apr/Jul/Oct, 18:30):
 
 ```
-schtasks /Create /SC MONTHLY /MO 3 /D 1 /ST 18:30 /TN ClaudeTutorBlindspot /TR "%USERPROFILE%\.claude\tutor\run_quarterly.cmd"
+schtasks /Create /SC MONTHLY /MO 3 /D 1 /ST 18:30 /TN ClaudeCoachBlindspot /TR "%USERPROFILE%\.claude\coach\run_quarterly.cmd"
 ```
 
 Test both without spending tokens: `python test_p2p8.py`.
 
 6. Requires Python 3.x (stdlib only) and the `claude` CLI on PATH for the weekly LLM sensors.
-   Test without spending tokens: `python tutor_weekly.py --no-llm`.
+   Test without spending tokens: `python coach_weekly.py --no-llm`.
 
 Optional (recommended): tame Claude Code's own background security-review fleet by adding to
 the `env` block of `~/.claude/settings.json` — this was 44% of all sessions in the original audit:
