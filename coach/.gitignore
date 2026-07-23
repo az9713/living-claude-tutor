@@ -1,6 +1,12 @@
 state.json
+pending-proposals.json
 weekly.log
 quarterly.log
+sync.log
 snapshots/
 reports/
 __pycache__/
+catalog/raw/
+catalog/manifest.json
+catalog/manifest.prev.json
+catalog/whats_new.md
